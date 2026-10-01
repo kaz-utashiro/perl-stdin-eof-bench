@@ -48,15 +48,18 @@ Probed on every release from 5.12.5 to 5.44.0
 | in the child | 5.12.5 – 5.36.3 | 5.38.0 – 5.44.0 |
 |---|---|---|
 | nothing — just read STDIN | FAIL | FAIL |
+| `exec "cat"` | ok | ok |
 | `STDIN->clearerr` | ok | ok |
 | `open STDIN, '<&', 0` | ok | ok |
 | a hand-rolled `pipe` instead of `'\|-'` | ok | ok |
 | `scalar <STDIN> if eof STDIN` | ok | **FAIL** |
 | parent reads in list context, child does nothing | ok | **FAIL** |
 
-`clearerr` is the whole of the fix, and it is what identifies the EOF
-flag as the thing at fault; `binmode STDIN`, which touches only the
-layer stack, does nothing.
+`exec` works because the condition is a property of the handle: once
+the program is replaced, there is no handle left to carry it.
+`clearerr` is the whole of the fix within perl, and it is what
+identifies the EOF flag as the thing at fault; `binmode STDIN`, which
+touches only the layer stack, does nothing.
 
 The last two rows turn at 5.38.0 because 80c1f1e45e stopped a failing
 readline from clearing the stream state.  That was deliberate (#20060,

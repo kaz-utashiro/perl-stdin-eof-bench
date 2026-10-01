@@ -48,13 +48,16 @@ $                                       # hello/world を期待
 | 子プロセスで何をするか | 5.12.5 – 5.36.3 | 5.38.0 – 5.44.0 |
 |---|---|---|
 | 何もしない（STDIN を読むだけ） | FAIL | FAIL |
+| `exec "cat"` | ok | ok |
 | `STDIN->clearerr` | ok | ok |
 | `open STDIN, '<&', 0` | ok | ok |
 | `'\|-'` ではなく自前の `pipe` を使う | ok | ok |
 | `scalar <STDIN> if eof STDIN` | ok | **FAIL** |
 | 親がリストコンテキストで読む（子は何もしない） | ok | **FAIL** |
 
-修正は `clearerr` だけで足り、それが EOF フラグを原因として特定します。
+`exec` で動くのは、この状態がハンドルの性質だからです。プログラムが
+置き換わればそれを持ち越すハンドルが残りません。perl 内で済ませる修正
+は `clearerr` だけで足り、それが EOF フラグを原因として特定します。
 レイヤースタックだけを触る `binmode STDIN` では何も起きません。
 
 最後の 2 行が 5.38.0 で転ぶのは、80c1f1e45e が「失敗した readline が

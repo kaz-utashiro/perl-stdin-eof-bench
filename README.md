@@ -97,9 +97,19 @@ away in 5.37.4, so both columns turn at **5.38.0** — not at 5.42, where
 the 2014 addendum had placed it.
 
 
-`exec-cat` failing on 5.12.5 and 5.16.3 is unexplained; it may be an
-artefact of how this probe collects the child's output rather than
-anything about those releases, so do not read much into it.
+### exec-cat, and why it first looked version-dependent
+
+`exec-cat` is the only case whose output is written by a separate
+program rather than by the forked perl, so it is the only one that can
+lose data if the parent exits without waiting for the child.  The first
+version of this probe never closed the pipe and relied on exit-time
+cleanup, and on 5.12.5 and 5.16.3 that lost the output — which looked
+like `exec` behaving differently on old perls, and is not.
+
+With `close CHLD` in place, `exec-cat` works on all sixteen releases.
+The `exec-cat-noclose` case keeps the old form for comparison, and what
+it actually measures is that 5.12.5 and 5.16.3 do not reliably reap a
+`'|-'` child during exit-time cleanup, while 5.20.3 and later do.
 
 Related: the same theme of a standard handle outliving its descriptor
 appears in perl/perl5#24883 and
