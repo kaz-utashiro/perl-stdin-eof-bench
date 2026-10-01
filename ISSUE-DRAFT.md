@@ -45,42 +45,28 @@ script prints the two lines.
 Probed on every release from 5.12.5 to 5.44.0
 ([results and workflow](https://github.com/kaz-utashiro/perl-stdin-eof-bench)):
 
-| case | what the child does | result |
+| in the child | 5.12.5 – 5.36.3 | 5.38.0 – 5.44.0 |
 |---|---|---|
-| `plain` | just reads STDIN | fails — this report |
-| `exec-cat` | `exec "cat"` | works; a fresh program gets a fresh handle |
-| `read-after-fork` | parent reads *after* forking | works; a restructuring, not a workaround |
-| `read-to-clear` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
-| `clearerr` | `STDIN->clearerr` | works — the minimal fix |
-| `binmode` | `binmode STDIN` | fails; layers are not the issue |
-| `fdopen-guard` | `open STDIN, '<&', 0 if eof STDIN` | works |
-| `fdopen-plain` | `open STDIN, '<&', 0` | works; the guard is not load-bearing |
-| `seek` | `seek STDIN, 0, 0` | fails; a pipe cannot be seeked |
-| `own-pipe` | hand-rolled `pipe` + `fork` | works |
+| nothing — just read STDIN | FAIL | FAIL |
+| `STDIN->clearerr` | ok | ok |
+| `open STDIN, '<&', 0` | ok | ok |
+| a hand-rolled `pipe` instead of `'\|-'` | ok | ok |
+| `scalar <STDIN> if eof STDIN` | ok | **FAIL** |
+| parent reads in list context, child does nothing | ok | **FAIL** |
 
-Across the sixteen releases probed, `plain` fails everywhere and
-`clearerr`, the two fdopen forms, `read-after-fork` and `own-pipe` work
-everywhere; `binmode` and `seek` fail everywhere.  Only two columns
-move:
+`clearerr` is the whole of the fix, and it is what identifies the EOF
+flag as the thing at fault; `binmode STDIN`, which touches only the
+layer stack, does nothing.
 
-| perl | `plain` | `read-to-clear` | `parent-@_` | `parent-my` | `clearerr` |
-|---|---|---|---|---|---|
-| 5.12.5 – 5.36.3 | FAIL | ok | ok | ok | ok |
-| **5.38.0** – 5.44.0 | FAIL | **FAIL** | **FAIL** | **FAIL** | ok |
-
-`read-to-clear`, `parent-@_` and `parent-my` all turn at 5.38.0 because
-80c1f1e45e stopped a failing readline from clearing the stream state.
-That was deliberate (#20060, settled in #21240), so I am not reporting
-it as a regression.  It matters here only in that it leaves `clearerr`,
-the fdopen-style re-open and a hand-rolled pipe as the ways to recover —
-and `clearerr`, the call #21240 names for a stale EOF, is the one that
-fixes this, which is a good hint as to where the condition lives.  It
-also settles something I had called mysterious in 2014: list context
-ends in a failing read, so `@_` was never special and a plain array
-behaves the same.
-
-(`exec-cat` also fails on 5.12.5 and 5.16.3, which I cannot explain and
-may be an artefact of how my probe collects the child's output.)
+The last two rows turn at 5.38.0 because 80c1f1e45e stopped a failing
+readline from clearing the stream state.  That was deliberate (#20060,
+settled in #21240), so I am not reporting it as a regression — only
+noting that it leaves `clearerr`, the fdopen-style re-open and a
+hand-rolled pipe as the ways out.  That `clearerr` is also the call
+#21240 names for a stale EOF is a good hint as to where the condition
+lives.  It settles something I had called mysterious in 2014 as well:
+list context ends in a failing read, so reading the input into `@_` was
+never special, and a plain array behaves the same.
 
 ## Discussion
 
