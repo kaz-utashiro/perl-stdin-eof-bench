@@ -58,13 +58,28 @@ Probed on every release from 5.12.5 to 5.44.0
 | `seek` | `seek STDIN, 0, 0` | fails; a pipe cannot be seeked |
 | `own-pipe` | hand-rolled `pipe` + `fork` | works |
 
-Two of these have decayed.  Reading from the handle to clear the
-condition — documented as a working, if inelegant, option when I first
-wrote this up in 2014 — no longer clears it: the child still sees
-`eof STDIN` true and reads zero lines.  Reading the input into `@_`
-also used to work and stopped in 5.42, and so did reading it into an
-ordinary `my @x`.  What is left is `clearerr`, the fdopen-style
-re-open, and rolling your own pipe.
+Across the sixteen releases probed, `plain` fails everywhere and
+`clearerr`, the two fdopen forms, `read-after-fork` and `own-pipe` work
+everywhere; `binmode` and `seek` fail everywhere.  Only two columns
+move:
+
+| perl | `plain` | `prime-read` | `clearerr` |
+|---|---|---|---|
+| 5.12.5 – 5.36.3 | FAIL | ok | ok |
+| **5.38.0** – 5.44.0 | FAIL | **FAIL** | ok |
+
+Reading from the handle to clear the condition — which I documented as
+a working, if inelegant, option in 2014 — stopped clearing it in
+**5.38.0**.  The child now still sees `eof STDIN` true and reads zero
+lines.  That is separate from reading the input into `@_`, which also
+used to work and stopped in 5.42 (as did reading it into an ordinary
+`my @x`).  So of the ways to recover in the child, two have gone and
+what is left is `clearerr`, the fdopen-style re-open, and rolling your
+own pipe.
+
+(`exec-cat` also fails on 5.12.5 and 5.16.3, which I cannot explain and
+which may be an artefact of how my probe collects the child's output;
+I would not read anything into it.)
 
 ## Discussion
 

@@ -28,12 +28,21 @@ the file matched, and therefore reads the input before forking.
 
 ## Results
 
-One line per release ([probe.pl](probe.pl)):
+Sixteen releases, 5.12.5 through 5.44.0
+([run](https://github.com/kaz-utashiro/perl-stdin-eof-bench/actions/runs/36851387847),
+see [probe.pl](probe.pl)):
 
-```
-RESULT perl=5.44.0 plain=FAIL exec-cat=ok read-after-fork=ok prime-read=FAIL \
-clearerr=ok binmode=FAIL fdopen-guard=ok fdopen-plain=ok seek=FAIL own-pipe=ok
-```
+| perl | `plain` | `prime-read` | `clearerr` | `exec-cat` |
+|---|---|---|---|---|
+| 5.12.5, 5.16.3 | FAIL | ok | ok | FAIL |
+| 5.20.3 – 5.36.3 | FAIL | ok | ok | ok |
+| **5.38.0** – 5.44.0 | FAIL | **FAIL** | ok | ok |
+
+Uniform across all sixteen releases probed: `plain` fails, `clearerr`
+works, `fdopen-guard` and `fdopen-plain` work, `read-after-fork` and
+`own-pipe` work, `binmode` and `seek` fail.  Only two columns move:
+`prime-read`, which stops working in 5.38.0, and `exec-cat`, which
+starts working in 5.20.3.
 
 | case | what the child does | |
 |---|---|---|
@@ -49,8 +58,14 @@ clearerr=ok binmode=FAIL fdopen-guard=ok fdopen-plain=ok seek=FAIL own-pipe=ok
 | `own-pipe` | hand-rolled `pipe` + `fork` | works |
 
 The 2014 article offered reading-to-prime as a working if inelegant
-option.  It no longer is.  Reading into `@_` used to work too and
-stopped in 5.42; so did reading into an ordinary `my @x`.
+option.  It was, through 5.36.3, and stopped being one in **5.38.0**.
+That is a separate decay from the one noted in the article's addendum,
+where reading the input into `@_` stopped working in 5.42 (as did
+reading it into an ordinary `my @x`).
+
+`exec-cat` failing on 5.12.5 and 5.16.3 is unexplained; it may be an
+artefact of how this probe collects the child's output rather than
+anything about those releases, so do not read much into it.
 
 Related: the same theme of a standard handle outliving its descriptor
 appears in perl/perl5#24883 and
