@@ -28,13 +28,14 @@ my $dir = $ENV{TMPDIR} || '/tmp';
 my %ok;
 
 for my $name (sort keys %case) {
-    my $prog = "\$_ = do { local \$/; <STDIN> };\n$case{$name}\nprint CHLD \$_;\n";
+    my $prog = "\$_ = do { local \$/; <STDIN> };\n$case{$name}\nprint CHLD \$_;\nclose CHLD;\n";
     $ok{$name} = run_child($prog);
 }
 $ok{'read-after-fork'} = run_child(<<'P');
 if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
 $_ = do { local $/; <STDIN> };
 print CHLD $_;
+close CHLD;
 P
 # The parent side matters too: how it reads changes whether the EOF
 # flag ends up set.  These read into a list instead of slurping into a
@@ -43,17 +44,25 @@ $ok{'parent-@_'} = run_child(<<'P');
 @_ = <STDIN>;
 if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
 print CHLD @_;
+close CHLD;
 P
 $ok{'parent-my'} = run_child(<<'P');
 my @x = <STDIN>;
 if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
 print CHLD @x;
+close CHLD;
 P
 $ok{'parent-@_-eof'} = run_child(<<'P');
 @_ = <STDIN>;
 my $e = eof STDIN;
 if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
 print CHLD @_;
+close CHLD;
+P
+$ok{'exec-cat-noclose'} = run_child(<<'P');
+$_ = do { local $/; <STDIN> };
+if (open(CHLD, '|-') == 0) { exec "cat" or warn $!; exit }
+print CHLD $_;
 P
 $ok{'own-pipe'} = run_child(<<'P');
 $_ = do { local $/; <STDIN> };
@@ -61,6 +70,8 @@ pipe PIN, POUT or die;
 if (fork == 0) { close STDIN; open STDIN, '<&PIN'; close PIN; close POUT; print <STDIN>; exit }
 close PIN;
 print POUT $_;
+close POUT;
+waitpid -1, 0;
 P
 
 sub run_child {
@@ -80,5 +91,5 @@ sub run_child {
     (defined $got && $got eq $data) ? 'ok' : 'FAIL';
 }
 
-my @order = qw(plain parent-@_ parent-my parent-@_-eof exec-cat read-after-fork read-to-clear clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
+my @order = qw(plain parent-@_ parent-my parent-@_-eof exec-cat exec-cat-noclose read-after-fork read-to-clear clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
 printf "RESULT perl=%vd %s\n", $^V, join ' ', map { "$_=$ok{$_}" } @order;
