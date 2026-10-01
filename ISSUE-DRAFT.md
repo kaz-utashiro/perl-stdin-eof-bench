@@ -71,20 +71,51 @@ lives.  It settles something I had called mysterious in 2014 as well:
 list context ends in a failing read, so reading the input into `@_` was
 never special, and a plain array behaves the same.
 
+## Where this comes from
+
+The child side of `Perl_my_popen()` in util.c swaps the descriptor at
+the system level and leaves the Perl-level handle alone:
+
+```c
+if (p[THIS] != (*mode == 'r')) {
+    PerlLIO_dup2(p[THIS], *mode == 'r');
+    PerlLIO_close(p[THIS]);
+```
+
+So nothing replaces STDIN; the pipe is dup2()ed onto fd 0 underneath a
+handle that is simply inherited across the fork, with its buffer and
+its flags as they were.  A few lines further down the function says as
+much, and already patches up one consequence by hand:
+
+```c
+#ifdef PERLIO_USING_CRLF
+   /* Since we circumvent IO layers when we manipulate low-level
+      filedescriptors directly, need to manually switch to the
+      default, binary, low-level mode; see PerlIOBuf_open(). */
+   PerlLIO_setmode((*mode == 'r'), O_BINARY);
+#endif
+```
+
+Clearing the stale EOF and error state would be the same kind of
+patch-up in the same place, and is what `STDIN->clearerr` is doing by
+hand today.
+
+(#24883 produces a comparable symptom — a standard handle keeping state
+across a descriptor swap — but by a different route: there perl
+deliberately saves the old PerlIO object and reinstates it.  Here there
+is no such path; the handle is never touched.)
+
 ## Discussion
 
-Since `open(FH, '|-')` is replacing the child's STDIN with a pipe, the
-EOF and error state of the handle it is replacing has no bearing on the
-new descriptor, and clearing it in the child looks like the natural
-thing to do — the same work `STDIN->clearerr` now has to be done by
-hand.  At a minimum this is worth a note in the documentation of
-`open`'s `'|-'` form, since the obvious reading of "the child's STDIN
-is the pipe" does not suggest that a condition from before the fork
-still applies.
+The child's STDIN is the pipe, but the handle it is read through is the
+one inherited from before the fork, and that handle's EOF and error
+state has no bearing on the new descriptor.  Clearing it in the child
+looks like the natural thing to do, and it is the work
+`STDIN->clearerr` now has to do by hand.
 
-This is the same shape as #24883, where a standard handle's PerlIO
-object outlives the descriptor swap and carries its layer stack with
-it.  Here it carries its EOF flag.
+At a minimum it is worth a note in the documentation of `open`'s `'|-'`
+form: the obvious reading of "the child's STDIN is the pipe" does not
+suggest that a condition from before the fork still applies to it.
 
 ## Real-world impact
 
