@@ -63,10 +63,10 @@ Across the sixteen releases probed, `plain` fails everywhere and
 everywhere; `binmode` and `seek` fail everywhere.  Only two columns
 move:
 
-| perl | `plain` | `read-to-clear` | `clearerr` |
-|---|---|---|---|
-| 5.12.5 – 5.36.3 | FAIL | ok | ok |
-| **5.38.0** – 5.44.0 | FAIL | **FAIL** | ok |
+| perl | `plain` | `read-to-clear` | `parent-@_` | `parent-my` | `clearerr` |
+|---|---|---|---|---|---|
+| 5.12.5 – 5.36.3 | FAIL | ok | ok | ok | ok |
+| **5.38.0** – 5.44.0 | FAIL | **FAIL** | **FAIL** | **FAIL** | ok |
 
 The `read-to-clear` column is not a regression, and I am not reporting
 it as one.  Reading from a handle used to clear the stream state as a
@@ -77,13 +77,21 @@ surfaced as #21240, the conclusion there was "a direct consequence of
 fixing #20060 ... not a bug, but a fix", and the reporter was pointed at
 `seek($fh,0,1)` or `$fh->clearerr()`.
 
-I raise it only because it changes what a caller can do about the
-condition this report *is* about.  In 2014 there were two ways to
-recover inside the child — read from the handle, or re-open it
-fdopen-style — and the first is deliberately gone, as is reading the
-input into `@_` (which stopped in 5.42) and into an ordinary `my @x`.
-What remains is `clearerr`, the fdopen-style re-open, and rolling your
-own pipe.
+The same commit explains the three columns that turn together, and
+incidentally explains something I had called mysterious in 2014: that
+reading the input into `@_` in the parent made the child work.
+
+| how the parent reads | what happens |
+|---|---|
+| `do { local $/; <STDIN> }` | one call reaches EOF, no *failing* readline follows, so the flag stays set |
+| `@_ = <STDIN>` (list context) | the final readline fails and returns undef; through 5.36.3 that cleared the state it had just set |
+| either, then `eof STDIN` | the test sets the flag again — fails on every release |
+
+It was never about `@_`: an ordinary `my @x` behaves identically and
+stops at the same place.  What mattered was list context ending in a
+failed read, which is what `read-to-clear` does deliberately.  So the
+ways to recover have narrowed by design, and what remains is
+`clearerr`, the fdopen-style re-open, and rolling your own pipe.
 
 That `clearerr` is both the call #21240 nominates for a stale EOF and
 the one call that fixes this is, I think, the most useful thing in the

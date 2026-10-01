@@ -32,24 +32,26 @@ Sixteen releases, 5.12.5 through 5.44.0
 ([run](https://github.com/kaz-utashiro/perl-stdin-eof-bench/actions/runs/36851387847),
 see [probe.pl](probe.pl)):
 
-| perl | `plain` | `read-to-clear` | `clearerr` | `exec-cat` |
-|---|---|---|---|---|
-| 5.12.5, 5.16.3 | FAIL | ok | ok | FAIL |
-| 5.20.3 – 5.36.3 | FAIL | ok | ok | ok |
-| **5.38.0** – 5.44.0 | FAIL | **FAIL** | ok | ok |
+| perl | `plain` | `read-to-clear` | `parent-@_` | `parent-my` | `clearerr` | `exec-cat` |
+|---|---|---|---|---|---|---|
+| 5.12.5, 5.16.3 | FAIL | ok | ok | ok | ok | FAIL |
+| 5.20.3 – 5.36.3 | FAIL | ok | ok | ok | ok | ok |
+| **5.38.0** – 5.44.0 | FAIL | **FAIL** | **FAIL** | **FAIL** | ok | ok |
 
 Uniform across all sixteen releases probed: `plain` fails, `clearerr`
 works, `fdopen-guard` and `fdopen-plain` work, `read-after-fork` and
-`own-pipe` work, `binmode` and `seek` fail.  Only two columns move:
-`read-to-clear`, which stops working in 5.38.0, and `exec-cat`, which
-starts working in 5.20.3.
+`own-pipe` work, and `binmode`, `seek` and `parent-@_-eof` fail.  Four
+columns move, and three of them turn together at 5.38.0.
 
 | case | what the child does | |
 |---|---|---|
 | `plain` | just reads STDIN | the bug |
 | `exec-cat` | `exec "cat"` | works — a fresh program gets a fresh handle |
 | `read-after-fork` | parent reads *after* forking | works — restructuring, not a workaround |
-| `read-to-clear` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
+| `read-to-clear` | `scalar <STDIN> if eof STDIN` | **worked through 5.36.3** |
+| `parent-@_` | parent reads with `@_ = <STDIN>` | **worked through 5.36.3** |
+| `parent-my` | parent reads with `my @x = <STDIN>` | **worked through 5.36.3** |
+| `parent-@_-eof` | the same, then `eof STDIN` | fails everywhere |
 | `clearerr` | `STDIN->clearerr` | works — the minimal fix |
 | `binmode` | `binmode STDIN` | fails — layers are not the issue |
 | `fdopen-guard` | `open STDIN, '<&', 0 if eof STDIN` | works |
@@ -73,9 +75,27 @@ and the reporter was pointed at `seek($fh,0,1)` or `$fh->clearerr()`.
 
 So `clearerr` is not just the one call that happens to fix the
 condition this repository is about; it is the call perl's own
-maintainers nominate for clearing a stale EOF.  Reading the input into
-`@_` used to work too and stopped in 5.42, as did reading it into an
-ordinary `my @x`.
+maintainers nominate for clearing a stale EOF.
+
+### Why the list-read trick worked, and why it stopped
+
+The 2014 write-up found that reading the input into `@_` made the child
+work and called it mysterious.  It has a plain cause, and it is the same
+one as `read-to-clear`:
+
+| how the parent reads | what happens |
+|---|---|
+| `do { local $/; <STDIN> }` | one call reaches EOF, no *failing* readline follows, so the flag stays set |
+| `@_ = <STDIN>` (list context) | the final readline fails and returns undef; up to 5.36.3 that cleared the state it had just set |
+| either, then `eof STDIN` | the test sets the flag again — fails on every release |
+
+So the trick was never about `@_`.  Reading into an ordinary `my @x`
+behaves identically and stops working at the same place; what mattered
+was list context ending in a failed read, which is exactly what
+`read-to-clear` does deliberately.  80c1f1e45e took that side effect
+away in 5.37.4, so both columns turn at **5.38.0** — not at 5.42, where
+the 2014 addendum had placed it.
+
 
 `exec-cat` failing on 5.12.5 and 5.16.3 is unexplained; it may be an
 artefact of how this probe collects the child's output rather than
