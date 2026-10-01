@@ -28,7 +28,8 @@ the file matched, and therefore reads the input before forking.
 
 ## Results
 
-Sixteen releases, 5.12.5 through 5.44.0
+Sixteen releases between 5.12.5 and 5.44.0 (5.14, 5.18 and 5.22 are
+not in the matrix)
 ([run](https://github.com/kaz-utashiro/perl-stdin-eof-bench/actions/runs/36851387847),
 see [probe.pl](probe.pl)):
 

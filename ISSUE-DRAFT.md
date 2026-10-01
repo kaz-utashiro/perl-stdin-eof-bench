@@ -42,7 +42,7 @@ script prints the two lines.
 
 ## What works and what does not
 
-Probed on every release from 5.12.5 to 5.44.0
+Probed on sixteen releases between 5.12.5 and 5.44.0
 ([results and workflow](https://github.com/kaz-utashiro/perl-stdin-eof-bench)):
 
 | in the child | 5.12.5 – 5.36.3 | 5.38.0 – 5.44.0 |
@@ -61,9 +61,11 @@ the program is replaced, there is no handle left to carry it.
 identifies the EOF flag as the thing at fault; `binmode STDIN`, which
 touches only the layer stack, does nothing.
 
-The last two rows turn at 5.38.0 because 80c1f1e45e stopped a failing
-readline from clearing the stream state.  That was deliberate (#20060,
-settled in #21240), so I am not reporting it as a regression — only
+The last two rows turn at 5.38.0, which is where 80c1f1e45e (5.37.4)
+stopped a failing readline from clearing the stream state.  I have not
+bisected that myself, but the boundary and the mechanism match.  It was
+deliberate (#20060, settled in #21240), so I am not reporting it as a
+regression — only
 noting that it leaves `clearerr`, the fdopen-style re-open and a
 hand-rolled pipe as the ways out.  That `clearerr` is also the call
 #21240 names for a stale EOF is a good hint as to where the condition
@@ -84,8 +86,8 @@ if (p[THIS] != (*mode == 'r')) {
 
 So nothing replaces STDIN; the pipe is dup2()ed onto fd 0 underneath a
 handle that is simply inherited across the fork, with its buffer and
-its flags as they were.  A few lines further down the function says as
-much, and already patches up one consequence by hand:
+its flags as they were.  Later in the same function it says as much,
+and already patches up one consequence by hand:
 
 ```c
 #ifdef PERLIO_USING_CRLF
@@ -123,9 +125,10 @@ Found in [App::Greple](https://metacpan.org/dist/App-Greple).  With an
 output filter configured, a naive implementation starts one filter
 process per input file, whether or not the file matched, so the filter
 has to be started only once the match is known — which means reading
-the input before forking.  Searching a directory of 13,000 small files
-(one calendar event per file) is practical only that way.  The
-workaround there has been the fdopen-style re-open since 2014.
+the input before forking.  The 2014 write-up reports searching a
+directory of more than 13,000 small files, one calendar event per file,
+in about a second that way, on the hardware of the time.  The
+workaround there has been the fdopen-style re-open since then.
 
 Anyone writing a filter that reads first and forks second will meet
 this, and the symptom — a child that silently produces nothing — gives
