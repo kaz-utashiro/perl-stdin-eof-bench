@@ -36,6 +36,25 @@ if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
 $_ = do { local $/; <STDIN> };
 print CHLD $_;
 P
+# The parent side matters too: how it reads changes whether the EOF
+# flag ends up set.  These read into a list instead of slurping into a
+# scalar, which the 2014 write-up found to work "mysteriously".
+$ok{'parent-@_'} = run_child(<<'P');
+@_ = <STDIN>;
+if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
+print CHLD @_;
+P
+$ok{'parent-my'} = run_child(<<'P');
+my @x = <STDIN>;
+if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
+print CHLD @x;
+P
+$ok{'parent-@_-eof'} = run_child(<<'P');
+@_ = <STDIN>;
+my $e = eof STDIN;
+if (open(CHLD, '|-') == 0) { print <STDIN>; exit }
+print CHLD @_;
+P
 $ok{'own-pipe'} = run_child(<<'P');
 $_ = do { local $/; <STDIN> };
 pipe PIN, POUT or die;
@@ -61,5 +80,5 @@ sub run_child {
     (defined $got && $got eq $data) ? 'ok' : 'FAIL';
 }
 
-my @order = qw(plain exec-cat read-after-fork read-to-clear clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
+my @order = qw(plain parent-@_ parent-my parent-@_-eof exec-cat read-after-fork read-to-clear clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
 printf "RESULT perl=%vd %s\n", $^V, join ' ', map { "$_=$ok{$_}" } @order;
