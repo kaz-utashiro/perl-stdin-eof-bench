@@ -50,7 +50,7 @@ Probed on every release from 5.12.5 to 5.44.0
 | `plain` | just reads STDIN | fails — this report |
 | `exec-cat` | `exec "cat"` | works; a fresh program gets a fresh handle |
 | `read-after-fork` | parent reads *after* forking | works; a restructuring, not a workaround |
-| `prime-read` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
+| `read-to-clear` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
 | `clearerr` | `STDIN->clearerr` | works — the minimal fix |
 | `binmode` | `binmode STDIN` | fails; layers are not the issue |
 | `fdopen-guard` | `open STDIN, '<&', 0 if eof STDIN` | works |
@@ -63,19 +63,31 @@ Across the sixteen releases probed, `plain` fails everywhere and
 everywhere; `binmode` and `seek` fail everywhere.  Only two columns
 move:
 
-| perl | `plain` | `prime-read` | `clearerr` |
+| perl | `plain` | `read-to-clear` | `clearerr` |
 |---|---|---|---|
 | 5.12.5 – 5.36.3 | FAIL | ok | ok |
 | **5.38.0** – 5.44.0 | FAIL | **FAIL** | ok |
 
-Reading from the handle to clear the condition — which I documented as
-a working, if inelegant, option in 2014 — stopped clearing it in
-**5.38.0**.  The child now still sees `eof STDIN` true and reads zero
-lines.  That is separate from reading the input into `@_`, which also
-used to work and stopped in 5.42 (as did reading it into an ordinary
-`my @x`).  So of the ways to recover in the child, two have gone and
-what is left is `clearerr`, the fdopen-style re-open, and rolling your
+The `read-to-clear` column is not a regression, and I am not reporting
+it as one.  Reading from a handle used to clear the stream state as a
+side effect; that side effect was the cause of #20060, where real read
+errors were lost, and 80c1f1e45e narrowed it in 5.37.4 so that only
+glob() clears — hence 5.38.0 as the boundary.  When the narrowing
+surfaced as #21240, the conclusion there was "a direct consequence of
+fixing #20060 ... not a bug, but a fix", and the reporter was pointed at
+`seek($fh,0,1)` or `$fh->clearerr()`.
+
+I raise it only because it changes what a caller can do about the
+condition this report *is* about.  In 2014 there were two ways to
+recover inside the child — read from the handle, or re-open it
+fdopen-style — and the first is deliberately gone, as is reading the
+input into `@_` (which stopped in 5.42) and into an ordinary `my @x`.
+What remains is `clearerr`, the fdopen-style re-open, and rolling your
 own pipe.
+
+That `clearerr` is both the call #21240 nominates for a stale EOF and
+the one call that fixes this is, I think, the most useful thing in the
+table: it says where the condition is actually living.
 
 (`exec-cat` also fails on 5.12.5 and 5.16.3, which I cannot explain and
 which may be an artefact of how my probe collects the child's output;

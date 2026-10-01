@@ -11,7 +11,7 @@ my $data = "hello\nworld\n";
 my %case = (
     'plain'        => q{ if (open(CHLD, '|-') == 0) { print <STDIN>; exit } },
     'exec-cat'     => q{ if (open(CHLD, '|-') == 0) { exec "cat" or warn $!; exit } },
-    'prime-read'   => q{ if (open(CHLD, '|-') == 0) { scalar <STDIN> if eof STDIN; print <STDIN>; exit } },
+    'read-to-clear'   => q{ if (open(CHLD, '|-') == 0) { scalar <STDIN> if eof STDIN; print <STDIN>; exit } },
     'fdopen-guard' => q{ if (open(CHLD, '|-') == 0) { open STDIN, '<&', 0 if eof STDIN; print <STDIN>; exit } },
     'fdopen-plain' => q{ if (open(CHLD, '|-') == 0) { open STDIN, '<&', 0; print <STDIN>; exit } },
     'seek'         => q{ if (open(CHLD, '|-') == 0) { seek STDIN, 0, 0; print <STDIN>; exit } },
@@ -61,5 +61,5 @@ sub run_child {
     (defined $got && $got eq $data) ? 'ok' : 'FAIL';
 }
 
-my @order = qw(plain exec-cat read-after-fork prime-read clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
+my @order = qw(plain exec-cat read-after-fork read-to-clear clearerr binmode fdopen-guard fdopen-plain seek own-pipe);
 printf "RESULT perl=%vd %s\n", $^V, join ' ', map { "$_=$ok{$_}" } @order;

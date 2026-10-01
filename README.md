@@ -32,7 +32,7 @@ Sixteen releases, 5.12.5 through 5.44.0
 ([run](https://github.com/kaz-utashiro/perl-stdin-eof-bench/actions/runs/36851387847),
 see [probe.pl](probe.pl)):
 
-| perl | `plain` | `prime-read` | `clearerr` | `exec-cat` |
+| perl | `plain` | `read-to-clear` | `clearerr` | `exec-cat` |
 |---|---|---|---|---|
 | 5.12.5, 5.16.3 | FAIL | ok | ok | FAIL |
 | 5.20.3 – 5.36.3 | FAIL | ok | ok | ok |
@@ -41,7 +41,7 @@ see [probe.pl](probe.pl)):
 Uniform across all sixteen releases probed: `plain` fails, `clearerr`
 works, `fdopen-guard` and `fdopen-plain` work, `read-after-fork` and
 `own-pipe` work, `binmode` and `seek` fail.  Only two columns move:
-`prime-read`, which stops working in 5.38.0, and `exec-cat`, which
+`read-to-clear`, which stops working in 5.38.0, and `exec-cat`, which
 starts working in 5.20.3.
 
 | case | what the child does | |
@@ -49,7 +49,7 @@ starts working in 5.20.3.
 | `plain` | just reads STDIN | the bug |
 | `exec-cat` | `exec "cat"` | works — a fresh program gets a fresh handle |
 | `read-after-fork` | parent reads *after* forking | works — restructuring, not a workaround |
-| `prime-read` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
+| `read-to-clear` | `scalar <STDIN> if eof STDIN` | **used to work, no longer does** |
 | `clearerr` | `STDIN->clearerr` | works — the minimal fix |
 | `binmode` | `binmode STDIN` | fails — layers are not the issue |
 | `fdopen-guard` | `open STDIN, '<&', 0 if eof STDIN` | works |
@@ -57,11 +57,25 @@ starts working in 5.20.3.
 | `seek` | `seek STDIN, 0, 0` | fails — cannot seek a pipe |
 | `own-pipe` | hand-rolled `pipe` + `fork` | works |
 
-The 2014 article offered reading-to-prime as a working if inelegant
-option.  It was, through 5.36.3, and stopped being one in **5.38.0**.
-That is a separate decay from the one noted in the article's addendum,
-where reading the input into `@_` stopped working in 5.42 (as did
-reading it into an ordinary `my @x`).
+### Why `read-to-clear` stopped working
+
+Not neglect: it was taken away on purpose.  Reading from a handle used
+to clear the stream state as a side effect, and that side effect was
+itself the cause of perl/perl5#20060, where genuine read errors were
+being lost.  Tony Cook's 80c1f1e45e narrowed it in 5.37.4 — "only clear
+the stream error state in readline() for glob()" — which is why 5.38.0
+is the boundary above.
+
+When the narrowing surfaced as perl/perl5#21240 ("readline() no longer
+detects appended data"), the answer there was "a direct consequence of
+fixing #20060 ... I'm inclined to say this is not a bug, but a fix",
+and the reporter was pointed at `seek($fh,0,1)` or `$fh->clearerr()`.
+
+So `clearerr` is not just the one call that happens to fix the
+condition this repository is about; it is the call perl's own
+maintainers nominate for clearing a stale EOF.  Reading the input into
+`@_` used to work too and stopped in 5.42, as did reading it into an
+ordinary `my @x`.
 
 `exec-cat` failing on 5.12.5 and 5.16.3 is unexplained; it may be an
 artefact of how this probe collects the child's output rather than
