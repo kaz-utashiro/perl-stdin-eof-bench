@@ -68,38 +68,19 @@ move:
 | 5.12.5 – 5.36.3 | FAIL | ok | ok | ok | ok |
 | **5.38.0** – 5.44.0 | FAIL | **FAIL** | **FAIL** | **FAIL** | ok |
 
-The `read-to-clear` column is not a regression, and I am not reporting
-it as one.  Reading from a handle used to clear the stream state as a
-side effect; that side effect was the cause of #20060, where real read
-errors were lost, and 80c1f1e45e narrowed it in 5.37.4 so that only
-glob() clears — hence 5.38.0 as the boundary.  When the narrowing
-surfaced as #21240, the conclusion there was "a direct consequence of
-fixing #20060 ... not a bug, but a fix", and the reporter was pointed at
-`seek($fh,0,1)` or `$fh->clearerr()`.
-
-The same commit explains the three columns that turn together, and
-incidentally explains something I had called mysterious in 2014: that
-reading the input into `@_` in the parent made the child work.
-
-| how the parent reads | what happens |
-|---|---|
-| `do { local $/; <STDIN> }` | one call reaches EOF, no *failing* readline follows, so the flag stays set |
-| `@_ = <STDIN>` (list context) | the final readline fails and returns undef; through 5.36.3 that cleared the state it had just set |
-| either, then `eof STDIN` | the test sets the flag again — fails on every release |
-
-It was never about `@_`: an ordinary `my @x` behaves identically and
-stops at the same place.  What mattered was list context ending in a
-failed read, which is what `read-to-clear` does deliberately.  So the
-ways to recover have narrowed by design, and what remains is
-`clearerr`, the fdopen-style re-open, and rolling your own pipe.
-
-That `clearerr` is both the call #21240 nominates for a stale EOF and
-the one call that fixes this is, I think, the most useful thing in the
-table: it says where the condition is actually living.
+`read-to-clear`, `parent-@_` and `parent-my` all turn at 5.38.0 because
+80c1f1e45e stopped a failing readline from clearing the stream state.
+That was deliberate (#20060, settled in #21240), so I am not reporting
+it as a regression.  It matters here only in that it leaves `clearerr`,
+the fdopen-style re-open and a hand-rolled pipe as the ways to recover —
+and `clearerr`, the call #21240 names for a stale EOF, is the one that
+fixes this, which is a good hint as to where the condition lives.  It
+also settles something I had called mysterious in 2014: list context
+ends in a failing read, so `@_` was never special and a plain array
+behaves the same.
 
 (`exec-cat` also fails on 5.12.5 and 5.16.3, which I cannot explain and
-which may be an artefact of how my probe collects the child's output;
-I would not read anything into it.)
+may be an artefact of how my probe collects the child's output.)
 
 ## Discussion
 
